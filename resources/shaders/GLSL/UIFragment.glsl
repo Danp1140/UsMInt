@@ -1,8 +1,8 @@
 #version 460
 
 layout(push_constant) uniform Constants {
-	vec2 position, extent;
 	vec4 bgcolor;
+	vec2 position, extent;
 } constants;
 
 layout(location = 0) in vec2 uv;

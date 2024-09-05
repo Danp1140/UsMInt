@@ -2,18 +2,18 @@
 #include <vector>
 #include <map>
 #include <iostream>
-#include <ext.hpp> // glm functions
+// #include <glm/ext.hpp>
 #include <vulkan/vulkan.hpp>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
 #define UI_DEFAULT_SANS_FILEPATH "/System/Library/fonts/Avenir Next.ttc"
 #define UI_DEFAULT_SANS_IDX 2
-#define UI_DEFAULT_BG_COLOR vec4(0.3, 0.3, 0.3, 1)
-#define UI_DEFAULT_HOVER_BG_COLOR vec4(0.4, 0.4, 0.4, 1)
-#define UI_DEFAULT_CLICK_BG_COLOR vec4(1, 0.4, 0.4, 1)
+#define UI_DEFAULT_BG_COLOR (UIColor){0.3, 0.3, 0.3, 1}
+#define UI_DEFAULT_HOVER_BG_COLOR (UIColor){0.4, 0.4, 0.4, 1}
+#define UI_DEFAULT_CLICK_BG_COLOR (UIColor){1, 0.4, 0.4, 1}
 
-using namespace glm;
+// using namespace glm;
 
 class UIComponent;
 
@@ -21,7 +21,7 @@ class UIText;
 
 typedef unsigned char unorm;
 
-typedef std::function<void (UIComponent*)> dfType;
+typedef std::function<void (const UIComponent* const, const VkCommandBuffer&)> dfType;
 
 typedef std::function<void (UIText*, unorm*)> tfType;
 
@@ -48,10 +48,78 @@ typedef struct UIImageInfo {
 	VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
 } UIImageInfo;
 
+// used as pixel coords starting bottom left (although sub-pixel values should still compute correctly)
+typedef struct UICoord {
+	float x, y;
+
+	UICoord() {
+		x = 0;
+		y = 0;
+	}
+	UICoord(float x1, float y1) {
+		x = x1;
+		y = y1;
+	}
+	UICoord(float xy) {
+		x = xy;
+		y = xy;
+	}
+
+	UICoord& operator=(const UICoord& rhs) {
+		x = rhs.x;
+		y = rhs.y;
+		return *this;
+	}
+	UICoord operator+(const UICoord& rhs) const {
+		return {x + rhs.x, y + rhs.y};
+	}
+	UICoord& operator+=(const UICoord& rhs) {
+		x += rhs.x;
+		y += rhs.y;
+		return *this;
+	}
+	UICoord operator-(const UICoord& rhs) const {
+		return {x - rhs.x, y - rhs.y};
+	}
+	UICoord& operator-=(const UICoord& rhs) {
+		x -= rhs.x;
+		y -= rhs.y;
+		return *this;
+	}
+	UICoord operator/(float rhs) const {
+		return {x / rhs, y / rhs};
+	}
+} UICoord;
+
+typedef struct UITexelCoord {
+	uint32_t x, y;
+
+	UITexelCoord& operator+=(const UITexelCoord& rhs) {
+		x += rhs.x;
+		y += rhs.y;
+		return *this;
+	}
+	UITexelCoord operator-(const UITexelCoord& rhs) const {
+		return {x - rhs.x, y - rhs.y};
+	}
+	UITexelCoord& operator-=(const UITexelCoord& rhs) {
+		x -= rhs.x;
+		y -= rhs.y;
+		return *this;
+	}
+	UITexelCoord operator/(uint32_t rhs) const {
+		return {x / rhs, y / rhs};
+	}
+} UITexelCoord;
+
+// could be made into a unorm...
+typedef struct UIColor {
+	float r, g, b, a;
+} UIColor;
+
 typedef struct UIPushConstantData {
-	// these fields are in pixels (although sub-pixel values should still compute correctly)
-	vec2 position = vec2(0), extent = vec2(0);
-	vec4 bgcolor = vec4(0.3, 0.3, 0.3, 1);
+	UIColor bgcolor = UIColor{0.3, 0.3, 0.3, 1};
+	UICoord position = {0, 0}, extent = {0, 0};
 } UIPushConstantData;
 
 typedef uint8_t UIEventFlags;
@@ -72,7 +140,8 @@ typedef enum UIDisplayFlagBits {
 class UIComponent {
 public:
 	UIComponent() : 
-		pcdata({vec2(0, 0), vec2(0, 0), UI_DEFAULT_BG_COLOR}),
+		pcdata({UI_DEFAULT_BG_COLOR, {0, 0}, {0, 0}}),
+		graphicspipeline(defaultgraphicspipeline),
 		drawFunc(defaultDrawFunc), 
 		onHover(defaultOnHover),
 		onHoverBegin(defaultOnHoverBegin),
@@ -83,8 +152,9 @@ public:
 		ds(defaultds), 
 		events(UI_EVENT_FLAG_NONE),
 		display(UI_DISPLAY_FLAG_SHOW) {}
-	UIComponent(vec2 p, vec2 e) : 
-		pcdata({p, e, UI_DEFAULT_BG_COLOR}), 
+	UIComponent(UICoord p, UICoord e) : 
+		pcdata({UI_DEFAULT_BG_COLOR, p, e}), 
+		graphicspipeline(defaultgraphicspipeline),
 		drawFunc(defaultDrawFunc), 
 		onHover(defaultOnHover),
 		onHoverBegin(defaultOnHoverBegin),
@@ -97,6 +167,7 @@ public:
 		display(UI_DISPLAY_FLAG_SHOW) {}
 	UIComponent(const UIComponent& rhs) :
 		pcdata(rhs.pcdata),
+		graphicspipeline(defaultgraphicspipeline),
 		drawFunc(rhs.drawFunc),
 		onHover(rhs.onHover),
 		onHoverBegin(rhs.onHoverBegin),
@@ -109,29 +180,35 @@ public:
 		display(rhs.display) {}
 	UIComponent(UIComponent&& rhs) noexcept;
 
+	// this should probably be protected no?
 	friend void swap(UIComponent& c1, UIComponent& c2);
 
-	virtual std::vector<UIComponent*> getChildren() = 0;
+	virtual std::vector<const UIComponent*> getChildren() const = 0;
 
-	void draw();
-	void listenMousePos(vec2 mousepos, void* data);
+	// cb must have been started already
+	void draw(const VkCommandBuffer& cb) const;
+	void listenMousePos(UICoord mousepos, void* data);
 	void listenMouseClick(bool click, void* data);
 
-	static void setGraphicsPipeline(UIPipelineInfo p) {graphicspipeline = p;}
-	static UIPipelineInfo getGraphicsPipeline() {return graphicspipeline;}
+	static void setDefaultGraphicsPipeline(const UIPipelineInfo& p) {defaultgraphicspipeline = p;}
+	static UIPipelineInfo getDefaultGraphicsPipeline() {return defaultgraphicspipeline;}
 	static void setNoTex(UIImageInfo i) {notex = i;}
 	static UIImageInfo getNoTex() {return notex;}
 	static void setDefaultDS(VkDescriptorSet d) {defaultds = d;}
 	static void setDefaultDrawFunc(dfType ddf) {defaultDrawFunc = ddf;}
 	void setOnClickBegin(cfType f) {onClickBegin = f;}
 	void setOnHoverEnd(cfType f) {onHoverEnd = f;}
-	static void setScreenExtent(vec2 e) {screenextent = e;}
+	static void setScreenExtent(VkExtent2D e) {screenextent = e;}
+	// TODO: phase out in favor of pass-by-reference
 	UIPushConstantData* getPCDataPtr() {return &pcdata;}
+	const UIPushConstantData& getPCData() const {return pcdata;}
 	// also changes position of children
-	void setPos(vec2 p);
-	vec2 getPos() {return pcdata.position;}
-	void setExt(vec2 e) {pcdata.extent = e;}
-	vec2 getExt() {return pcdata.extent;}
+	void setPos(UICoord p);
+	UICoord getPos() const {return pcdata.position;}
+	void setExt(UICoord e) {pcdata.extent = e;}
+	UICoord getExt() const {return pcdata.extent;}
+	void setGraphicsPipeline(const UIPipelineInfo& p) {graphicspipeline = p;}
+	const UIPipelineInfo& getGraphicsPipeline() const {return graphicspipeline;}
 	void setDS(VkDescriptorSet d) {ds = d;}
 	VkDescriptorSet* getDSPtr() {return &ds;}
 	void setDisplayFlag(UIDisplayFlags f) {display |= f;}
@@ -141,8 +218,11 @@ public:
 
 protected:
 	UIPushConstantData pcdata;
-	static vec2 screenextent;
+	static VkExtent2D screenextent;
 	UIDisplayFlags display;
+	UIPipelineInfo graphicspipeline;
+
+	virtual std::vector<UIComponent*> _getChildren() = 0;
 
 private:
 	dfType drawFunc;
@@ -150,7 +230,7 @@ private:
 		onClick, onClickBegin, onClickEnd;
 	VkDescriptorSet ds;
 	UIEventFlags events;
-	static UIPipelineInfo graphicspipeline;
+	static UIPipelineInfo defaultgraphicspipeline;
 	static UIImageInfo notex;
 	static VkDescriptorSet defaultds;
 	static dfType defaultDrawFunc;
@@ -165,7 +245,7 @@ public:
 	UIText(const UIText& rhs);
 	UIText(UIText&& rhs) noexcept;
 	UIText(std::wstring t);
-	UIText(std::wstring t, vec2 p); 
+	UIText(std::wstring t, UICoord p); 
 	~UIText();
 
 	friend void swap(UIText& t1, UIText& t2);
@@ -176,8 +256,11 @@ public:
 	UIText& operator=(UIText&&) = delete;
 	*/
 
-	std::vector<UIComponent*> getChildren();
+	std::vector<const UIComponent*> getChildren() const;
+	// TODO: phase out in favor of pass by reference
 	UIImageInfo* getTexPtr() {return &tex;}
+	const UIImageInfo& getTex() {return tex;}
+	void setTex(const UIImageInfo& i) {tex = i;}
 	void setText(std::wstring t);
 	const std::wstring& getText() {return text;}
 
@@ -189,6 +272,8 @@ private:
 	UIImageInfo tex;
 
 	void genTex();
+
+	std::vector<UIComponent*> _getChildren();
 
 	static FT_Library ft;
 	static FT_Face typeface;
@@ -202,8 +287,8 @@ public:
 	UIDropdown() : 
 		options({}),
 		unfolded(false),
-		otherpos(vec2(0, 0)),
-		otherext(vec2(0, 0)),
+		otherpos({0, 0}),
+		otherext({0, 0}),
 		UIComponent() {}
 	UIDropdown(const UIDropdown& rhs) :
 		options(rhs.options),
@@ -213,18 +298,20 @@ public:
 		UIComponent(rhs) {}
 	UIDropdown(UIDropdown&& rhs) noexcept;
 	UIDropdown(std::vector<std::wstring> o);
-	UIDropdown(std::vector<std::wstring> o, vec2 p, vec2 e);
+	UIDropdown(std::vector<std::wstring> o, UICoord p, UICoord e);
 
-	std::vector<UIComponent*> getChildren();
-	void setPos(vec2 p);
-	void setExt(vec2 e);
+	std::vector<const UIComponent*> getChildren() const;
+	void setPos(UICoord p);
+	void setExt(UICoord e);
 	void fold();
 	void unfold();
 
 protected:
 	bool unfolded;
-	vec2 otherpos, otherext;
+	UICoord otherpos, otherext;
 	std::vector<UIText> options;
+
+	std::vector<UIComponent*> _getChildren();
 
 private:
 	void setOptions(std::vector<std::wstring>& o);
@@ -240,10 +327,12 @@ public:
 	UIDropdownButtons(std::wstring t);
 	UIDropdownButtons(std::wstring t, std::vector<std::wstring> o);
 
-	std::vector<UIComponent*> getChildren();
+	std::vector<const UIComponent*> getChildren() const;
 
 private:
 	UIText title;
+
+	std::vector<UIComponent*> _getChildren();
 };
 
 class UIDropdownSelector : public UIDropdown {
@@ -258,7 +347,7 @@ class UIRibbon : public UIComponent {
 public:
 	UIRibbon();
 
-	std::vector<UIComponent*> getChildren();
+	std::vector<const UIComponent*> getChildren() const;
 
 	void addOption(std::wstring name);
 	void addOption(UIDropdownButtons&& o);
@@ -268,4 +357,6 @@ public:
 
 private:
 	std::vector<UIDropdownButtons> options;
+
+	std::vector<UIComponent*> _getChildren();
 };
