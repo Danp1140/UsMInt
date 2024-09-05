@@ -2,7 +2,6 @@
 #include <vector>
 #include <map>
 #include <iostream>
-// #include <glm/ext.hpp>
 #include <vulkan/vulkan.hpp>
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -12,8 +11,6 @@
 #define UI_DEFAULT_BG_COLOR (UIColor){0.3, 0.3, 0.3, 1}
 #define UI_DEFAULT_HOVER_BG_COLOR (UIColor){0.4, 0.4, 0.4, 1}
 #define UI_DEFAULT_CLICK_BG_COLOR (UIColor){1, 0.4, 0.4, 1}
-
-// using namespace glm;
 
 class UIComponent;
 
