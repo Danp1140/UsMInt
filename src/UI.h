@@ -12,6 +12,8 @@
 #define UI_DEFAULT_HOVER_BG_COLOR (UIColor){0.4, 0.4, 0.4, 1}
 #define UI_DEFAULT_CLICK_BG_COLOR (UIColor){1, 0.4, 0.4, 1}
 
+// #define VERBOSE_TEXT_OBJECTS
+
 class UIComponent;
 
 class UIText;
@@ -176,11 +178,14 @@ public:
 		events(rhs.events),
 		display(rhs.display) {}
 	UIComponent(UIComponent&& rhs) noexcept;
+	virtual ~UIComponent() = default;
 
 	// this should probably be protected no?
 	friend void swap(UIComponent& c1, UIComponent& c2);
 
-	virtual std::vector<const UIComponent*> getChildren() const = 0;
+	UIComponent& operator=(UIComponent rhs);
+
+	virtual std::vector<const UIComponent*> getChildren() const {return {};}
 
 	// cb must have been started already
 	void draw(const VkCommandBuffer& cb) const;
@@ -192,6 +197,7 @@ public:
 	static void setNoTex(UIImageInfo i) {notex = i;}
 	static UIImageInfo getNoTex() {return notex;}
 	static void setDefaultDS(VkDescriptorSet d) {defaultds = d;}
+	static VkDescriptorSet getDefaultDS() {return defaultds;}
 	static void setDefaultDrawFunc(dfType ddf) {defaultDrawFunc = ddf;}
 	void setOnClickBegin(cfType f) {onClickBegin = f;}
 	void setOnHoverEnd(cfType f) {onHoverEnd = f;}
@@ -204,9 +210,12 @@ public:
 	UICoord getPos() const {return pcdata.position;}
 	void setExt(UICoord e) {pcdata.extent = e;}
 	UICoord getExt() const {return pcdata.extent;}
-	void setGraphicsPipeline(const UIPipelineInfo& p) {graphicspipeline = p;}
+	// also sets childrens' graphics pipelines
+	void setGraphicsPipeline(const UIPipelineInfo& p);
 	const UIPipelineInfo& getGraphicsPipeline() const {return graphicspipeline;}
-	void setDS(VkDescriptorSet d) {ds = d;}
+	virtual void setDS(VkDescriptorSet d) {ds = d;}
+	const VkDescriptorSet& getDS() const {return ds;}
+	// TODO: phase out in favor of pass-by-reference
 	VkDescriptorSet* getDSPtr() {return &ds;}
 	void setDisplayFlag(UIDisplayFlags f) {display |= f;}
 	void unsetDisplayFlag(UIDisplayFlags f) {display &= ~f;}
@@ -218,14 +227,14 @@ protected:
 	static VkExtent2D screenextent;
 	UIDisplayFlags display;
 	UIPipelineInfo graphicspipeline;
+	VkDescriptorSet ds;
 
-	virtual std::vector<UIComponent*> _getChildren() = 0;
+	virtual std::vector<UIComponent*> _getChildren() {return {};}
 
 private:
 	dfType drawFunc;
 	cfType onHover, onHoverBegin, onHoverEnd,
 		onClick, onClickBegin, onClickEnd;
-	VkDescriptorSet ds;
 	UIEventFlags events;
 	static UIPipelineInfo defaultgraphicspipeline;
 	static UIImageInfo notex;
@@ -233,6 +242,36 @@ private:
 	static dfType defaultDrawFunc;
 	static cfType defaultOnHover, defaultOnHoverBegin, defaultOnHoverEnd, 
 			defaultOnClick, defaultOnClickBegin, defaultOnClickEnd;
+};
+
+class UIContainer : public UIComponent {
+public:
+	UIContainer() = default;
+	UIContainer(const UIContainer& rhs) :
+		children(rhs.children),
+		UIComponent(rhs) {};
+	~UIContainer();
+
+	std::vector<const UIComponent*> getChildren() const;
+	// void addChild(const UIComponent& c);
+	/*
+	 * This template function is a little hack to get the appropriate contructor called for classes like
+	 * UIText, which needs to monitor how many objects are using which texture. Implicitly, T should
+	 * only be a UIComponent inheritor, I'm unsure if there is a way to enforce this.
+	 */
+	template<class T>
+	void addChild(const T& c) {
+		T* temp = new T;
+		*temp = c;
+		children.push_back(dynamic_cast<UIComponent*>(temp));
+	}
+
+private:
+	std::vector<UIComponent*> _getChildren();
+	
+	// heap-alloc'd pointer vector, alloc'd and freed by UIContainer, so that we can have any type of
+	// UIComponent
+	std::vector<UIComponent*> children;
 };
 
 class UIText : public UIComponent {
@@ -248,12 +287,9 @@ public:
 	friend void swap(UIText& t1, UIText& t2);
 
 	UIText& operator=(UIText rhs);
-	/*
-	UIText& operator=(const UIText&) = delete;
-	UIText& operator=(UIText&&) = delete;
-	*/
 
 	std::vector<const UIComponent*> getChildren() const;
+	void setDS(VkDescriptorSet d);
 	// TODO: phase out in favor of pass by reference
 	UIImageInfo* getTexPtr() {return &tex;}
 	const UIImageInfo& getTex() {return tex;}

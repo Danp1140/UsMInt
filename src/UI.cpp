@@ -14,34 +14,6 @@ UIImageInfo UIComponent::notex = {};
 VkDescriptorSet UIComponent::defaultds = VK_NULL_HANDLE;
 dfType UIComponent::defaultDrawFunc = nullptr;
 
-UIComponent::UIComponent(UIComponent&& rhs) noexcept :
-		pcdata(rhs.pcdata),
-		graphicspipeline(defaultgraphicspipeline),
-		drawFunc(rhs.drawFunc),
-		onHover(rhs.onHover),
-		onHoverBegin(rhs.onHoverBegin),
-		onHoverEnd(rhs.onHoverEnd),
-		onClick(rhs.onClick),
-		onClickBegin(rhs.onClickBegin),
-		onClickEnd(rhs.onClickEnd),
-		ds(rhs.ds),
-		events(rhs.events),
-		display(rhs.display) {
-	// TODO: figure out if this body is neccesary
-	// TODO: figure out if list init should use std::move
-	rhs.pcdata = (UIPushConstantData){};
-	rhs.drawFunc = nullptr;
-	rhs.onHover = nullptr;
-	rhs.onHoverBegin = nullptr;
-	rhs.onHoverEnd = nullptr;
-	rhs.onClick = nullptr;
-	rhs.onClickBegin = nullptr;
-	rhs.onClickEnd = nullptr;
-	rhs.ds = VK_NULL_HANDLE;
-	rhs.events = UI_EVENT_FLAG_NONE;
-	rhs.display = UI_DISPLAY_FLAG_SHOW;
-}
-
 void swap(UIComponent& c1, UIComponent& c2) {
 	std::swap(c1.pcdata, c2.pcdata);
 	std::swap(c1.graphicspipeline, c2.graphicspipeline);
@@ -54,6 +26,11 @@ void swap(UIComponent& c1, UIComponent& c2) {
 	std::swap(c1.onClickEnd, c2.onClickEnd);
 	std::swap(c1.ds, c2.ds);
 	std::swap(c1.events, c2.events);
+}
+
+UIComponent& UIComponent::operator=(UIComponent rhs) {
+	swap(*this, rhs);
+	return *this;
 }
 
 void UIComponent::draw(const VkCommandBuffer& cb) const {
@@ -113,6 +90,11 @@ void UIComponent::setPos(UICoord p) {
 	for (UIComponent* c : _getChildren()) c->setPos(c->getPos() + diff);
 }
 
+void UIComponent::setGraphicsPipeline(const UIPipelineInfo& p) {
+	graphicspipeline = p;
+	for (UIComponent* c : _getChildren()) c->setGraphicsPipeline(p);
+}
+
 void UIComponent::show() {
 	// should technically re-listen for mousepos & click
 	setDisplayFlag(UI_DISPLAY_FLAG_SHOW);
@@ -128,6 +110,36 @@ void UIComponent::hide() {
 		events &= ~UI_EVENT_FLAG_CLICK;
 		onClickEnd(this, nullptr);
 	}
+}
+
+// -- Protected --
+
+UIComponent::UIComponent(UIComponent&& rhs) noexcept :
+		pcdata(rhs.pcdata),
+		graphicspipeline(defaultgraphicspipeline),
+		drawFunc(rhs.drawFunc),
+		onHover(rhs.onHover),
+		onHoverBegin(rhs.onHoverBegin),
+		onHoverEnd(rhs.onHoverEnd),
+		onClick(rhs.onClick),
+		onClickBegin(rhs.onClickBegin),
+		onClickEnd(rhs.onClickEnd),
+		ds(rhs.ds),
+		events(rhs.events),
+		display(rhs.display) {
+	// TODO: figure out if this body is neccesary
+	// TODO: figure out if list init should use std::move
+	rhs.pcdata = (UIPushConstantData){};
+	rhs.drawFunc = nullptr;
+	rhs.onHover = nullptr;
+	rhs.onHoverBegin = nullptr;
+	rhs.onHoverEnd = nullptr;
+	rhs.onClick = nullptr;
+	rhs.onClickBegin = nullptr;
+	rhs.onClickEnd = nullptr;
+	rhs.ds = VK_NULL_HANDLE;
+	rhs.events = UI_EVENT_FLAG_NONE;
+	rhs.display = UI_DISPLAY_FLAG_SHOW;
 }
 
 // -- Private --
@@ -146,6 +158,37 @@ cfType UIComponent::defaultOnClickBegin = [] (UIComponent* self, void* d) {
 cfType UIComponent::defaultOnClickEnd = [] (UIComponent* self, void* d) {
 	self->pcdata.bgcolor = UI_DEFAULT_BG_COLOR;
 };
+
+/*
+ * ---------------
+ * | UIContainer |
+ * ---------------
+ */
+
+// -- Public --
+
+UIContainer::~UIContainer() {
+	for (UIComponent* c : children) delete c;
+}
+
+std::vector<const UIComponent*> UIContainer::getChildren() const {
+	std::vector<const UIComponent*> result = {};
+	for (size_t i = 0; i < children.size(); i++) result.push_back(children[i]);
+	return result;
+}
+
+/*
+void UIContainer::addChild(const UIComponent& c) {
+	children.push_back(new UIComponent);
+	*children.back() = c;
+}
+*/
+
+// -- Private --
+
+std::vector<UIComponent*> UIContainer::_getChildren() {
+	return children;
+}
 
 /* 
  * ----------
@@ -170,7 +213,9 @@ UIText::UIText() : text(L""), tex({}) {
 		FT_New_Face(ft, UI_DEFAULT_SANS_FILEPATH, UI_DEFAULT_SANS_IDX, &typeface); 
 	}
 	tex = {};
-	// std::cout << "UIText()\n";
+#ifdef VERBOSE_TEXT_OBJECTS
+	std::cout << "UIText()\n";
+#endif
 }
 
 UIText::UIText(const UIText& rhs) :
@@ -178,20 +223,20 @@ UIText::UIText(const UIText& rhs) :
 		tex(rhs.tex),
 		UIComponent(rhs) {
 	imgusers[tex.image]++;
-	/*
+#ifdef VERBOSE_TEXT_OBJECTS
 	std::cout << "cpy\n";
 	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
-	*/
+#endif
 }
 
 UIText::UIText(UIText&& rhs) noexcept :
 	text(std::move(rhs.text)),
 	tex(std::move(rhs.tex)),
 	UIComponent(rhs) {
-	/*
+#ifdef VERBOSE_TEXT_OBJECTS
 	std::cout << "move\n";
 	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
-	*/
+#endif
 	rhs.tex = (UIImageInfo){};
 	// std::cout << &rhs << " => " << this << std::endl;
 }
@@ -199,29 +244,30 @@ UIText::UIText(UIText&& rhs) noexcept :
 UIText::UIText(std::wstring t) : UIText() {
 	text = t;
 	genTex();
-	/*
+#ifdef VERBOSE_TEXT_OBJECTS
 	std::cout << "UIText(1)\n";
 	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
-	*/
+#endif
 }
 
 UIText::UIText(std::wstring t, UICoord p) : UIComponent(p, UICoord{0, 0}) {
+	UIText();
 	// TODO: figure out how to call this other constructor
 	text = t;
 	genTex();
-	/*
+#ifdef VERBOSE_TEXT_OBJECTS
 	std::cout << "UIText(2)\n";
 	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
-	*/
+#endif
 }
 
 UIText::~UIText() {
 	if (tex.image != VK_NULL_HANDLE) {
 		imgusers[tex.image]--;
-		/*
+#ifdef VERBOSE_TEXT_OBJECTS
 		std::cout << "~UIText()\n";
 		std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
-		*/
+#endif
 		if (imgusers[tex.image] == 0) {
 			texDestroyFunc(this);
 		}
@@ -240,14 +286,19 @@ void swap(UIText& t1, UIText& t2) {
 
 UIText& UIText::operator=(UIText rhs) {
 	swap(*this, rhs);
-	/*
+#ifdef VERBOSE_TEXT_OBJECTS
 	std::cout << "=\n";
 	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
-	*/
+#endif
 	return *this;
 }
 
 std::vector<const UIComponent*> UIText::getChildren() const {return {};}
+
+void UIText::setDS(VkDescriptorSet d) {
+	ds = d;
+	genTex();
+}
 
 void UIText::setText(std::wstring t) {
 	text = t;
@@ -311,6 +362,7 @@ void UIText::genTex() {
 	if (tex.image != VK_NULL_HANDLE) imgusers[tex.image]--;
 	// TODO: allow for regeneration of (static size) texture
 	texLoadFunc(this, texturedata);
+	free(texturedata);
 	imgusers[tex.image]++;
 }
 
