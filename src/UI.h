@@ -12,19 +12,19 @@
 #define UI_DEFAULT_HOVER_BG_COLOR (UIColor){0.4, 0.4, 0.4, 1}
 #define UI_DEFAULT_CLICK_BG_COLOR (UIColor){1, 0.4, 0.4, 1}
 
-// #define VERBOSE_TEXT_OBJECTS
+// #define VERBOSE_IMAGE_OBJECTS
 
 class UIComponent;
 
-class UIText;
+class UIImage;
 
 typedef unsigned char unorm;
 
 typedef std::function<void (const UIComponent* const, const VkCommandBuffer&)> dfType;
 
-typedef std::function<void (UIText*, unorm*)> tfType;
+typedef std::function<void (UIImage*, void*)> tfType;
 
-typedef std::function<void (UIText*)> tdfType;
+typedef std::function<void (UIImage*)> tdfType;
 
 typedef std::function<void (UIComponent*, void*)> cfType;
 
@@ -45,6 +45,7 @@ typedef struct UIImageInfo {
 	VkImageView view = VK_NULL_HANDLE;
 	VkExtent2D extent = {0, 0};
 	VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VkFormat format = VK_FORMAT_R8_UNORM;
 } UIImageInfo;
 
 // used as pixel coords starting bottom left (although sub-pixel values should still compute correctly)
@@ -119,6 +120,7 @@ typedef struct UIColor {
 typedef struct UIPushConstantData {
 	UIColor bgcolor = UIColor{0.3, 0.3, 0.3, 1};
 	UICoord position = {0, 0}, extent = {0, 0};
+	bool blend = false;
 } UIPushConstantData;
 
 typedef uint8_t UIEventFlags;
@@ -274,45 +276,68 @@ private:
 	std::vector<UIComponent*> children;
 };
 
-class UIText : public UIComponent {
+class UIImage : public UIComponent {
 public:
+	// instead of making these public, could add public intermediary functions to UIImage
+	static tfType texLoadFunc;
+	static tdfType texDestroyFunc;
+
 	// Note: default constructor does not initialize the texture
-	UIText();
-	UIText(const UIText& rhs);
-	UIText(UIText&& rhs) noexcept;
-	UIText(std::wstring t);
-	UIText(std::wstring t, UICoord p); 
-	~UIText();
+	UIImage();
+	UIImage(const UIImage& rhs);
+	UIImage(UIImage&& rhs) noexcept;
+	UIImage(UICoord p); 
+	~UIImage();
 
-	friend void swap(UIText& t1, UIText& t2);
+	friend void swap(UIImage& t1, UIImage& t2);
 
-	UIText& operator=(UIText rhs);
+	UIImage& operator=(UIImage rhs);
 
-	std::vector<const UIComponent*> getChildren() const;
-	void setDS(VkDescriptorSet d);
-	// TODO: phase out in favor of pass by reference
-	UIImageInfo* getTexPtr() {return &tex;}
+	std::vector<const UIComponent*> getChildren() const {return {};}
+	virtual void setDS(VkDescriptorSet d) {ds = d;}
 	const UIImageInfo& getTex() {return tex;}
-	void setTex(const UIImageInfo& i) {tex = i;}
-	void setText(std::wstring t);
-	const std::wstring& getText() {return text;}
+	void setTex(const UIImageInfo& i);
 
 	static void setTexLoadFunc(tfType tf) {texLoadFunc = tf;}
 	static void setTexDestroyFunc(tdfType tdf) {texDestroyFunc = tdf;}
 
 private:
-	std::wstring text;
 	UIImageInfo tex;
+
+	std::vector<UIComponent*> _getChildren() {return {};}
+
+	static std::map<VkImage, uint8_t> imgusers;
+};
+
+class UIText : public UIImage {
+public:
+	// Note: default constructor does not initialize the texture
+	UIText();
+	UIText(const UIText& rhs) :
+		text(rhs.text),
+		UIImage(rhs) {}
+	UIText(UIText&& rhs) noexcept :
+		text(std::move(rhs.text)),
+		UIImage(rhs) {}
+	UIText(std::wstring t);
+	UIText(std::wstring t, UICoord p); 
+	~UIText() = default;
+
+	friend void swap(UIText& t1, UIText& t2);
+
+	UIText& operator=(UIText rhs);
+
+	void setDS(VkDescriptorSet d);
+	void setText(std::wstring t);
+	const std::wstring& getText() {return text;}
+
+private:
+	std::wstring text;
 
 	void genTex();
 
-	std::vector<UIComponent*> _getChildren();
-
 	static FT_Library ft;
 	static FT_Face typeface;
-	static tfType texLoadFunc;
-	static tdfType texDestroyFunc;
-	static std::map<VkImage, uint8_t> imgusers;
 };
 
 class UIDropdown : public UIComponent {

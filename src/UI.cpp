@@ -190,6 +190,86 @@ std::vector<UIComponent*> UIContainer::_getChildren() {
 	return children;
 }
 
+/*
+ * -----------
+ * | UIImage |
+ * -----------
+ */
+
+tfType UIImage::texLoadFunc = nullptr; 
+tdfType UIImage::texDestroyFunc = nullptr;
+std::map<VkImage, uint8_t> UIImage::imgusers = {};
+
+// -- Public --
+
+UIImage::UIImage() {
+#ifdef VERBOSE_IMAGE_OBJECTS
+	std::cout << "UIImage()" << std::endl;
+#endif
+}
+
+UIImage::UIImage(const UIImage& rhs) :
+		tex(rhs.tex),
+		UIComponent(rhs) {
+	imgusers[tex.image]++;
+#ifdef VERBOSE_IMAGE_OBJECTS
+	std::cout << "UIImage(const UIImage&)\n";
+	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
+#endif
+}
+
+UIImage::UIImage(UIImage&& rhs) noexcept :
+	tex(std::move(rhs.tex)),
+	UIComponent(rhs) {
+#ifdef VERBOSE_IMAGE_OBJECTS
+	std::cout << "UIImage(UIImage&&)\n";
+	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
+#endif
+}
+
+UIImage::UIImage(UICoord p) : UIComponent(p, UICoord{0, 0}) {
+	UIImage();
+#ifdef VERBOSE_IMAGE_OBJECTS
+	std::cout << "UIImage(UICoord)\n";
+	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
+#endif
+}
+
+UIImage::~UIImage() {
+#ifdef VERBOSE_IMAGE_OBJECTS
+	std::cout << "~UIImage()\n";
+	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
+#endif
+	if (tex.image != VK_NULL_HANDLE) {
+		imgusers[tex.image]--;
+		if (imgusers[tex.image] == 0) texDestroyFunc(this);
+	}
+}
+
+void swap(UIImage& t1, UIImage& t2) {
+	swap(static_cast<UIComponent&>(t1), static_cast<UIComponent&>(t2));
+	std::swap(t1.tex, t2.tex);
+}
+
+UIImage& UIImage::operator=(UIImage rhs) {
+	swap(*this, rhs);
+#ifdef VERBOSE_IMAGE_OBJECTS
+	std::cout << "Image& = Image\n";
+	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
+#endif
+	return *this;
+}
+
+void UIImage::setTex(const UIImageInfo& i) {
+	if (tex.image != i.image) {
+		if (tex.image != VK_NULL_HANDLE) imgusers[tex.image]--;
+		if (i.image != VK_NULL_HANDLE) imgusers[i.image]++;
+	}
+	tex = i;
+}
+
+// -- Private --
+
 /* 
  * ----------
  * | UIText |
@@ -198,13 +278,10 @@ std::vector<UIComponent*> UIContainer::_getChildren() {
 
 FT_Library UIText::ft = nullptr;
 FT_Face UIText::typeface = nullptr;
-tfType UIText::texLoadFunc = nullptr; 
-tdfType UIText::texDestroyFunc = nullptr;
-std::map<VkImage, uint8_t> UIText::imgusers = {};
 
 // -- Public --
 
-UIText::UIText() : text(L""), tex({}) {
+UIText::UIText() : text(L""), UIImage() {
 	if (!ft) {
 		ft = FT_Library();
 		FT_Init_FreeType(&ft);
@@ -212,88 +289,29 @@ UIText::UIText() : text(L""), tex({}) {
 	if (!typeface) {
 		FT_New_Face(ft, UI_DEFAULT_SANS_FILEPATH, UI_DEFAULT_SANS_IDX, &typeface); 
 	}
-	tex = {};
-#ifdef VERBOSE_TEXT_OBJECTS
-	std::cout << "UIText()\n";
-#endif
-}
-
-UIText::UIText(const UIText& rhs) :
-		text(rhs.text),
-		tex(rhs.tex),
-		UIComponent(rhs) {
-	imgusers[tex.image]++;
-#ifdef VERBOSE_TEXT_OBJECTS
-	std::cout << "cpy\n";
-	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
-#endif
-}
-
-UIText::UIText(UIText&& rhs) noexcept :
-	text(std::move(rhs.text)),
-	tex(std::move(rhs.tex)),
-	UIComponent(rhs) {
-#ifdef VERBOSE_TEXT_OBJECTS
-	std::cout << "move\n";
-	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
-#endif
-	rhs.tex = (UIImageInfo){};
-	// std::cout << &rhs << " => " << this << std::endl;
+	pcdata.blend = true;
 }
 
 UIText::UIText(std::wstring t) : UIText() {
 	text = t;
 	genTex();
-#ifdef VERBOSE_TEXT_OBJECTS
-	std::cout << "UIText(1)\n";
-	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
-#endif
 }
 
-UIText::UIText(std::wstring t, UICoord p) : UIComponent(p, UICoord{0, 0}) {
-	UIText();
-	// TODO: figure out how to call this other constructor
+UIText::UIText(std::wstring t, UICoord p) : UIText() {
+	setPos(p);
 	text = t;
 	genTex();
-#ifdef VERBOSE_TEXT_OBJECTS
-	std::cout << "UIText(2)\n";
-	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
-#endif
-}
-
-UIText::~UIText() {
-	if (tex.image != VK_NULL_HANDLE) {
-		imgusers[tex.image]--;
-#ifdef VERBOSE_TEXT_OBJECTS
-		std::cout << "~UIText()\n";
-		std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
-#endif
-		if (imgusers[tex.image] == 0) {
-			texDestroyFunc(this);
-		}
-	}
-	text = L"";
-	tex = (UIImageInfo){};
-	// std::cout << this << " is no more" << std::endl;
 }
 
 void swap(UIText& t1, UIText& t2) {
-	// std::cout << "swap\n";
-	swap(static_cast<UIComponent&>(t1), static_cast<UIComponent&>(t2));
+	swap(static_cast<UIImage&>(t1), static_cast<UIImage&>(t2));
 	std::swap(t1.text, t2.text);
-	std::swap(t1.tex, t2.tex);
 }
 
 UIText& UIText::operator=(UIText rhs) {
 	swap(*this, rhs);
-#ifdef VERBOSE_TEXT_OBJECTS
-	std::cout << "=\n";
-	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
-#endif
 	return *this;
 }
-
-std::vector<const UIComponent*> UIText::getChildren() const {return {};}
 
 void UIText::setDS(VkDescriptorSet d) {
 	ds = d;
@@ -327,7 +345,9 @@ void UIText::genTex() {
 	FT_Size_Metrics m = typeface->size->metrics;
 	const uint32_t hres = maxlinelength / pixelscale, vres = numlines * m.height / pixelscale;
 	// TODO: switch all hres, vres to this extent
-	tex.extent = {hres, vres};
+	UIImageInfo temp = getTex();
+	temp.extent = {hres, vres};
+	setTex(temp);
 	unorm* texturedata = (unorm*)malloc(hres * vres * sizeof(float));
 	memset(&texturedata[0], 0.0f, hres * vres * sizeof(float));
 	// TODO: should this be int or float?
@@ -359,14 +379,10 @@ void UIText::genTex() {
 
 	pcdata.extent = UICoord(hres, vres);
 
-	if (tex.image != VK_NULL_HANDLE) imgusers[tex.image]--;
 	// TODO: allow for regeneration of (static size) texture
 	texLoadFunc(this, texturedata);
 	free(texturedata);
-	imgusers[tex.image]++;
 }
-
-std::vector<UIComponent*> UIText::_getChildren() {return {};}
 
 /* 
  * --------------
