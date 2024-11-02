@@ -2,12 +2,18 @@
 #include <vector>
 #include <map>
 #include <iostream>
+#include <functional>
 #include <vulkan/vulkan.hpp>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
+#ifdef __APPLE__
 #define UI_DEFAULT_SANS_FILEPATH "/System/Library/fonts/Avenir Next.ttc"
 #define UI_DEFAULT_SANS_IDX 2
+#else
+#define UI_DEFAULT_SANS_FILEPATH "/usr/share/fonts/truetype/noto/NotoSansDisplay-Regular.ttf"
+#define UI_DEFAULT_SANS_IDX 0
+#endif
 #define UI_DEFAULT_BG_COLOR (UIColor){0.3, 0.3, 0.3, 1}
 #define UI_DEFAULT_HOVER_BG_COLOR (UIColor){0.4, 0.4, 0.4, 1}
 #define UI_DEFAULT_CLICK_BG_COLOR (UIColor){1, 0.4, 0.4, 1}
