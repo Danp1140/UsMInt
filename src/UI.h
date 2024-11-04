@@ -3,7 +3,7 @@
 #include <map>
 #include <iostream>
 #include <functional>
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
@@ -174,7 +174,7 @@ public:
 		display(UI_DISPLAY_FLAG_SHOW) {}
 	UIComponent(const UIComponent& rhs) :
 		pcdata(rhs.pcdata),
-		graphicspipeline(defaultgraphicspipeline),
+		graphicspipeline(rhs.graphicspipeline),
 		drawFunc(rhs.drawFunc),
 		onHover(rhs.onHover),
 		onHoverBegin(rhs.onHoverBegin),
@@ -266,12 +266,15 @@ public:
 	 * This template function is a little hack to get the appropriate contructor called for classes like
 	 * UIText, which needs to monitor how many objects are using which texture. Implicitly, T should
 	 * only be a UIComponent inheritor, I'm unsure if there is a way to enforce this.
+	 *
+	 * It returns the heap-alloc'd pointer for further ops. Allows for a UIHandler to keep all these pointers straight itself if it needs to, without overhead in here.
 	 */
 	template<class T>
-	void addChild(const T& c) {
+	T* addChild(const T& c) {
 		T* temp = new T;
 		*temp = c;
 		children.push_back(dynamic_cast<UIComponent*>(temp));
+		return temp;
 	}
 
 private:
