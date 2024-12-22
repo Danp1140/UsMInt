@@ -177,13 +177,6 @@ std::vector<const UIComponent*> UIContainer::getChildren() const {
 	return result;
 }
 
-/*
-void UIContainer::addChild(const UIComponent& c) {
-	children.push_back(new UIComponent);
-	*children.back() = c;
-}
-*/
-
 // -- Private --
 
 std::vector<UIComponent*> UIContainer::_getChildren() {
@@ -211,6 +204,7 @@ UIImage::UIImage() {
 UIImage::UIImage(const UIImage& rhs) :
 		tex(rhs.tex),
 		UIComponent(rhs) {
+	pcdata.flags |= UI_PC_FLAG_TEX;
 	imgusers[tex.image]++;
 #ifdef VERBOSE_IMAGE_OBJECTS
 	std::cout << "UIImage(const UIImage&)\n";
@@ -289,7 +283,7 @@ UIText::UIText() : text(L""), UIImage() {
 	if (!typeface) {
 		FT_New_Face(ft, UI_DEFAULT_SANS_FILEPATH, UI_DEFAULT_SANS_IDX, &typeface); 
 	}
-	pcdata.blend = true;
+	pcdata.flags |= UI_PC_FLAG_BLEND;
 }
 
 UIText::UIText(std::wstring t) : UIText() {
@@ -326,9 +320,16 @@ void UIText::setText(std::wstring t) {
 // -- Private --
 
 void UIText::genTex() {
-	const uint32_t pixelscale = 64;
+	const uint32_t pixelscale = 1;
 	// FT_Set_Char_Size(typeface, 0, 50 * pixelscale, 0, 0);
-	FT_Set_Pixel_Sizes(typeface, 0, 32);
+	// FT_Set_Pixel_Sizes(typeface, 0, 32);
+	// FT_Set_Pixel_Sizes(typeface, 0, pixelscale);
+	FT_Size_RequestRec req {
+		FT_SIZE_REQUEST_TYPE_NOMINAL,
+		36, 36,
+		100, 100
+	};
+	std::cout << FT_Request_Size(typeface, &req) << std::endl;
 	uint32_t maxlinelength = 0, linelengthcounter = 0, numlines = 1;
 	for (char c : text) {
 		if (c == '\n') {
@@ -337,6 +338,7 @@ void UIText::genTex() {
 			numlines++;
 			continue;
 		}
+		// TODO: better load hint for just getting metrics???
 		FT_Load_Char(typeface, c, FT_LOAD_DEFAULT);
 		linelengthcounter += typeface->glyph->metrics.horiAdvance;
 	}
@@ -348,8 +350,8 @@ void UIText::genTex() {
 	UIImageInfo temp = getTex();
 	temp.extent = {hres, vres};
 	setTex(temp);
-	unorm* texturedata = (unorm*)malloc(hres * vres * sizeof(float));
-	memset(&texturedata[0], 0.0f, hres * vres * sizeof(float));
+	unorm* texturedata = (unorm*)malloc(hres * vres * sizeof(unorm));
+	memset(&texturedata[0], 0.0f, hres * vres * sizeof(unorm));
 	// TODO: should this be int or float?
 	UICoord penposition(0, vres - m.ascender / pixelscale);
 

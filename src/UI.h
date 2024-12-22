@@ -123,10 +123,17 @@ typedef struct UIColor {
 	float r, g, b, a;
 } UIColor;
 
+typedef enum UIPushConstantFlagBits {
+	UI_PC_FLAG_NONE =  0x00,
+	UI_PC_FLAG_BLEND = 0x01,
+	UI_PC_FLAG_TEX =   0x02
+} UIPushConstantFlagBits;
+typedef uint32_t UIPushConstantFlags;
+
 typedef struct UIPushConstantData {
-	UIColor bgcolor = UIColor{0.3, 0.3, 0.3, 1};
+	UIColor bgcolor = UI_DEFAULT_BG_COLOR;
 	UICoord position = {0, 0}, extent = {0, 0};
-	bool blend = false;
+	UIPushConstantFlags flags = UI_PC_FLAG_NONE;
 } UIPushConstantData;
 
 typedef uint8_t UIEventFlags;
@@ -147,7 +154,7 @@ typedef enum UIDisplayFlagBits {
 class UIComponent {
 public:
 	UIComponent() : 
-		pcdata({UI_DEFAULT_BG_COLOR, {0, 0}, {0, 0}}),
+		pcdata({UI_DEFAULT_BG_COLOR, {0, 0}, {0, 0}, UI_PC_FLAG_NONE}),
 		graphicspipeline(defaultgraphicspipeline),
 		drawFunc(defaultDrawFunc), 
 		onHover(defaultOnHover),
@@ -160,7 +167,7 @@ public:
 		events(UI_EVENT_FLAG_NONE),
 		display(UI_DISPLAY_FLAG_SHOW) {}
 	UIComponent(UICoord p, UICoord e) : 
-		pcdata({UI_DEFAULT_BG_COLOR, p, e}), 
+		pcdata({UI_DEFAULT_BG_COLOR, p, e, UI_PC_FLAG_NONE}), 
 		graphicspipeline(defaultgraphicspipeline),
 		drawFunc(defaultDrawFunc), 
 		onHover(defaultOnHover),
@@ -261,7 +268,6 @@ public:
 	~UIContainer();
 
 	std::vector<const UIComponent*> getChildren() const;
-	// void addChild(const UIComponent& c);
 	/*
 	 * This template function is a little hack to get the appropriate contructor called for classes like
 	 * UIText, which needs to monitor how many objects are using which texture. Implicitly, T should
@@ -272,6 +278,7 @@ public:
 	template<class T>
 	T* addChild(const T& c) {
 		T* temp = new T;
+		std::cout << temp << std::endl;
 		*temp = c;
 		children.push_back(dynamic_cast<UIComponent*>(temp));
 		return temp;
