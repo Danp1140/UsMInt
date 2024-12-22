@@ -281,7 +281,8 @@ UIText::UIText() : text(L""), UIImage() {
 		FT_Init_FreeType(&ft);
 	}
 	if (!typeface) {
-		FT_New_Face(ft, UI_DEFAULT_SANS_FILEPATH, UI_DEFAULT_SANS_IDX, &typeface); 
+		// FT_New_Face(ft, UI_DEFAULT_SANS_FILEPATH, UI_DEFAULT_SANS_IDX, &typeface); 
+		FT_New_Face(ft, UI_DEFAULT_SERIF_FILEPATH, UI_DEFAULT_SERIF_IDX, &typeface); 
 	}
 	pcdata.flags |= UI_PC_FLAG_BLEND;
 }
@@ -320,14 +321,10 @@ void UIText::setText(std::wstring t) {
 // -- Private --
 
 void UIText::genTex() {
-	const uint32_t pixelscale = 1;
-	// FT_Set_Char_Size(typeface, 0, 50 * pixelscale, 0, 0);
-	// FT_Set_Pixel_Sizes(typeface, 0, 32);
-	// FT_Set_Pixel_Sizes(typeface, 0, pixelscale);
 	FT_Size_RequestRec req {
 		FT_SIZE_REQUEST_TYPE_NOMINAL,
-		36, 36,
-		100, 100
+		12 << 6, 12 << 6,
+		400, 400
 	};
 	std::cout << FT_Request_Size(typeface, &req) << std::endl;
 	uint32_t maxlinelength = 0, linelengthcounter = 0, numlines = 1;
@@ -338,34 +335,40 @@ void UIText::genTex() {
 			numlines++;
 			continue;
 		}
-		// TODO: better load hint for just getting metrics???
-		FT_Load_Char(typeface, c, FT_LOAD_DEFAULT);
-		linelengthcounter += typeface->glyph->metrics.horiAdvance;
+		FT_Load_Char(typeface, c, FT_LOAD_BITMAP_METRICS_ONLY);
+		linelengthcounter += truncate26_6(typeface->glyph->metrics.horiAdvance);
 	}
 	if (linelengthcounter > maxlinelength) maxlinelength = linelengthcounter;
+	// TODO: kerning???
 
 	FT_Size_Metrics m = typeface->size->metrics;
-	const uint32_t hres = maxlinelength / pixelscale, vres = numlines * m.height / pixelscale;
+	m.ascender = truncate26_6(m.ascender);
+	m.descender = truncate26_6(m.descender);
+	m.height = truncate26_6(m.height);
+	const uint32_t hres = maxlinelength, vres = numlines * m.height;
 	// TODO: switch all hres, vres to this extent
 	UIImageInfo temp = getTex();
 	temp.extent = {hres, vres};
 	setTex(temp);
 	unorm* texturedata = (unorm*)malloc(hres * vres * sizeof(unorm));
 	memset(&texturedata[0], 0.0f, hres * vres * sizeof(unorm));
-	// TODO: should this be int or float?
-	UICoord penposition(0, vres - m.ascender / pixelscale);
+	UICoord penposition(0, vres - m.ascender);
 
 	FT_Glyph_Metrics gm;
 	for (char c : text) {
 		if (c == '\n') {
-			penposition.y -= m.height / pixelscale;
+			penposition.y -= m.height;
 			penposition.x = 0;
 			continue;
 		}
 		FT_Load_Char(typeface, c, FT_LOAD_RENDER);
 		if (typeface->glyph) FT_Render_Glyph(typeface->glyph, FT_RENDER_MODE_NORMAL);
+		// could do a float cast instead of truncate for some of these i think
 		gm = typeface->glyph->metrics;
-		penposition += UICoord(gm.horiBearingX, gm.horiBearingY) / pixelscale;
+		gm.horiBearingX = truncate26_6(gm.horiBearingX);
+		gm.horiBearingY = truncate26_6(gm.horiBearingY);
+		gm.horiAdvance = truncate26_6(gm.horiAdvance);
+		penposition += UICoord(gm.horiBearingX, gm.horiBearingY);
 		unsigned char* bitmapbuffer = typeface->glyph->bitmap.buffer;
 		// TODO: turn into UICoord
 		uint32_t xtex = 0, ytex = 0;
@@ -376,7 +379,7 @@ void UIText::genTex() {
 				texturedata[ytex * hres + xtex] = *bitmapbuffer++;
 			}
 		}
-		penposition += UICoord(gm.horiAdvance - gm.horiBearingX, -gm.horiBearingY) / pixelscale;
+		penposition += UICoord(gm.horiAdvance - gm.horiBearingX, -gm.horiBearingY);
 	}
 
 	pcdata.extent = UICoord(hres, vres);

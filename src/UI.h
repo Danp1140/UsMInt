@@ -10,6 +10,8 @@
 #ifdef __APPLE__
 #define UI_DEFAULT_SANS_FILEPATH "/System/Library/fonts/Avenir Next.ttc"
 #define UI_DEFAULT_SANS_IDX 2
+#define UI_DEFAULT_SERIF_FILEPATH "/System/Library/fonts/supplemental/Times New Roman.ttf"
+#define UI_DEFAULT_SERIF_IDX 0
 #else
 #define UI_DEFAULT_SANS_FILEPATH "/usr/share/fonts/truetype/noto/NotoSansDisplay-Regular.ttf"
 #define UI_DEFAULT_SANS_IDX 0
@@ -354,6 +356,8 @@ private:
 
 	static FT_Library ft;
 	static FT_Face typeface;
+
+	static constexpr FT_Pos truncate26_6(FT_Pos x) {return x >> 6;}
 };
 
 class UIDropdown : public UIComponent {
