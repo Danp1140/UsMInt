@@ -87,6 +87,7 @@ void UIComponent::listenMouseClick(bool click, void* data) {
 void UIComponent::setPos(UICoord p) {
 	UICoord diff = p - pcdata.position;
 	pcdata.position = p;
+	std::vector<UIComponent*> ctemp = _getChildren();
 	for (UIComponent* c : _getChildren()) c->setPos(c->getPos() + diff);
 }
 
@@ -171,6 +172,16 @@ UIContainer::~UIContainer() {
 	for (UIComponent* c : children) delete c;
 }
 
+void swap(UIContainer& c1, UIContainer& c2) {
+	swap(static_cast<UIComponent&>(c1), static_cast<UIComponent&>(c2));
+	std::swap(c1.children, c2.children);
+}
+
+UIContainer& UIContainer::operator=(UIContainer rhs) {
+	swap(*this, rhs);
+	return *this;
+}
+
 std::vector<const UIComponent*> UIContainer::getChildren() const {
 	std::vector<const UIComponent*> result = {};
 	for (size_t i = 0; i < children.size(); i++) result.push_back(children[i]);
@@ -195,7 +206,8 @@ std::map<VkImage, uint8_t> UIImage::imgusers = {};
 
 // -- Public --
 
-UIImage::UIImage() {
+UIImage::UIImage() : UIComponent() {
+	pcdata.flags |= UI_PC_FLAG_TEX;
 #ifdef VERBOSE_IMAGE_OBJECTS
 	std::cout << "UIImage()" << std::endl;
 #endif
@@ -204,7 +216,6 @@ UIImage::UIImage() {
 UIImage::UIImage(const UIImage& rhs) :
 		tex(rhs.tex),
 		UIComponent(rhs) {
-	pcdata.flags |= UI_PC_FLAG_TEX;
 	imgusers[tex.image]++;
 #ifdef VERBOSE_IMAGE_OBJECTS
 	std::cout << "UIImage(const UIImage&)\n";
@@ -321,12 +332,15 @@ void UIText::setText(std::wstring t) {
 // -- Private --
 
 void UIText::genTex() {
+	const uint32_t fontsize = 18; // in pt
+	const uint32_t dpi = 512;
 	FT_Size_RequestRec req {
 		FT_SIZE_REQUEST_TYPE_NOMINAL,
-		12 << 6, 12 << 6,
-		400, 400
+		fontsize << 6, fontsize << 6,
+		dpi, dpi
 	};
-	std::cout << FT_Request_Size(typeface, &req) << std::endl;
+	FT_Request_Size(typeface, &req);
+	// TODO: float, not trucated, bounds???
 	uint32_t maxlinelength = 0, linelengthcounter = 0, numlines = 1;
 	for (char c : text) {
 		if (c == '\n') {
@@ -351,11 +365,14 @@ void UIText::genTex() {
 	temp.extent = {hres, vres};
 	setTex(temp);
 	unorm* texturedata = (unorm*)malloc(hres * vres * sizeof(unorm));
+	// TODO: at the very least use realloc
 	memset(&texturedata[0], 0.0f, hres * vres * sizeof(unorm));
 	UICoord penposition(0, vres - m.ascender);
 
 	FT_Glyph_Metrics gm;
-	for (char c : text) {
+	UICoord pixscan;
+	float hbx, hby, ha;
+	for (wchar_t c : text) {
 		if (c == '\n') {
 			penposition.y -= m.height;
 			penposition.x = 0;
@@ -363,26 +380,24 @@ void UIText::genTex() {
 		}
 		FT_Load_Char(typeface, c, FT_LOAD_RENDER);
 		if (typeface->glyph) FT_Render_Glyph(typeface->glyph, FT_RENDER_MODE_NORMAL);
-		// could do a float cast instead of truncate for some of these i think
 		gm = typeface->glyph->metrics;
-		gm.horiBearingX = truncate26_6(gm.horiBearingX);
-		gm.horiBearingY = truncate26_6(gm.horiBearingY);
-		gm.horiAdvance = truncate26_6(gm.horiAdvance);
-		penposition += UICoord(gm.horiBearingX, gm.horiBearingY);
+		hbx = floatFrom26_6(gm.horiBearingX);
+		hby = floatFrom26_6(gm.horiBearingY);
+		ha = floatFrom26_6(gm.horiAdvance);
+		penposition += UICoord(hbx, hby);
 		unsigned char* bitmapbuffer = typeface->glyph->bitmap.buffer;
-		// TODO: turn into UICoord
-		uint32_t xtex = 0, ytex = 0;
+		pixscan = UICoord(0, 0);
 		for (uint32_t y = 0; y < typeface->glyph->bitmap.rows; y++) {
 			for (uint32_t x = 0; x < typeface->glyph->bitmap.width; x++) {
-				xtex = (uint32_t)penposition.x + x;
-				ytex = (uint32_t)penposition.y - y;
-				texturedata[ytex * hres + xtex] = *bitmapbuffer++;
+				pixscan.x = penposition.x + (float)x;
+				pixscan.y = penposition.y - (float)y;
+				texturedata[(size_t)floor(pixscan.y * (float)hres + pixscan.x)] = 
+					std::max(*bitmapbuffer++, texturedata[(size_t)floor(pixscan.y * (float)hres + pixscan.x)]);
 			}
 		}
-		penposition += UICoord(gm.horiAdvance - gm.horiBearingX, -gm.horiBearingY);
+		penposition += UICoord(ha - hbx, -hby);
 	}
-
-	pcdata.extent = UICoord(hres, vres);
+	pcdata.extent = UICoord(hres, vres) / (float)dpi * 72.f * 1.33333333333f;
 
 	// TODO: allow for regeneration of (static size) texture
 	texLoadFunc(this, texturedata);

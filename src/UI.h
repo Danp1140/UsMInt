@@ -11,6 +11,8 @@
 #define UI_DEFAULT_SANS_FILEPATH "/System/Library/fonts/Avenir Next.ttc"
 #define UI_DEFAULT_SANS_IDX 2
 #define UI_DEFAULT_SERIF_FILEPATH "/System/Library/fonts/supplemental/Times New Roman.ttf"
+// #define UI_DEFAULT_SERIF_FILEPATH "/System/Library/fonts/Hiragino Sans GB.ttc"
+// #define UI_DEFAULT_SERIF_FILEPATH "/System/Library/fonts/Apple Color Emoji.ttc"
 #define UI_DEFAULT_SERIF_IDX 0
 #else
 #define UI_DEFAULT_SANS_FILEPATH "/usr/share/fonts/truetype/noto/NotoSansDisplay-Regular.ttf"
@@ -20,7 +22,7 @@
 #define UI_DEFAULT_HOVER_BG_COLOR (UIColor){0.4, 0.4, 0.4, 1}
 #define UI_DEFAULT_CLICK_BG_COLOR (UIColor){1, 0.4, 0.4, 1}
 
-// #define VERBOSE_IMAGE_OBJECTS
+#define VERBOSE_IMAGE_OBJECTS
 
 class UIComponent;
 
@@ -93,6 +95,9 @@ typedef struct UICoord {
 		x -= rhs.x;
 		y -= rhs.y;
 		return *this;
+	}
+	UICoord operator*(float rhs) const {
+		return {x * rhs, y * rhs};
 	}
 	UICoord operator/(float rhs) const {
 		return {x / rhs, y / rhs};
@@ -197,11 +202,11 @@ public:
 	UIComponent(UIComponent&& rhs) noexcept;
 	virtual ~UIComponent() = default;
 
-	// this should probably be protected no?
 	friend void swap(UIComponent& c1, UIComponent& c2);
 
-	UIComponent& operator=(UIComponent rhs);
+	virtual UIComponent& operator=(UIComponent rhs);
 
+	// TODO: can we make UIComponent pure virtual???
 	virtual std::vector<const UIComponent*> getChildren() const {return {};}
 
 	// cb must have been started already
@@ -227,6 +232,7 @@ public:
 	UICoord getPos() const {return pcdata.position;}
 	void setExt(UICoord e) {pcdata.extent = e;}
 	UICoord getExt() const {return pcdata.extent;}
+	void setBGCol(UIColor c) {pcdata.bgcolor = c;}
 	// also sets childrens' graphics pipelines
 	void setGraphicsPipeline(const UIPipelineInfo& p);
 	const UIPipelineInfo& getGraphicsPipeline() const {return graphicspipeline;}
@@ -268,6 +274,10 @@ public:
 		children(rhs.children),
 		UIComponent(rhs) {};
 	~UIContainer();
+
+	friend void swap(UIContainer& c1, UIContainer& c2);
+
+	UIContainer& operator=(UIContainer rhs);
 
 	std::vector<const UIComponent*> getChildren() const;
 	/*
@@ -353,11 +363,14 @@ private:
 	std::wstring text;
 
 	void genTex();
+	
+	std::vector<UIComponent*> _getChildren() {return {};}
 
 	static FT_Library ft;
 	static FT_Face typeface;
 
-	static constexpr FT_Pos truncate26_6(FT_Pos x) {return x >> 6;}
+	static FT_Pos truncate26_6(FT_Pos x) {return x >> 6;}
+	static float floatFrom26_6(FT_Pos x) {return (float)x / (float)(1 << 6);}
 };
 
 class UIDropdown : public UIComponent {
