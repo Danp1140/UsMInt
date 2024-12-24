@@ -287,13 +287,11 @@ public:
 	 *
 	 * It returns the heap-alloc'd pointer for further ops. Allows for a UIHandler to keep all these pointers straight itself if it needs to, without overhead in here.
 	 */
+	// TODO: option to use rvalue ref and move
 	template<class T>
 	T* addChild(const T& c) {
-		T* temp = new T;
-		std::cout << temp << std::endl;
-		*temp = c;
-		children.push_back(dynamic_cast<UIComponent*>(temp));
-		return temp;
+		children.push_back(dynamic_cast<UIComponent*>(new T(c)));
+		return dynamic_cast<T*>(children.back());
 	}
 
 private:

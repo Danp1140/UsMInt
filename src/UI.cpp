@@ -115,6 +115,7 @@ void UIComponent::hide() {
 
 // -- Protected --
 
+// TODO: double-check this impl
 UIComponent::UIComponent(UIComponent&& rhs) noexcept :
 		pcdata(rhs.pcdata),
 		graphicspipeline(defaultgraphicspipeline),
@@ -216,7 +217,7 @@ UIImage::UIImage() : UIComponent() {
 UIImage::UIImage(const UIImage& rhs) :
 		tex(rhs.tex),
 		UIComponent(rhs) {
-	imgusers[tex.image]++;
+	if (tex.image != VK_NULL_HANDLE) imgusers[tex.image]++;
 #ifdef VERBOSE_IMAGE_OBJECTS
 	std::cout << "UIImage(const UIImage&)\n";
 	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
