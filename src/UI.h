@@ -8,12 +8,14 @@
 #include FT_FREETYPE_H
 
 #ifdef __APPLE__
-#define UI_DEFAULT_SANS_FILEPATH "/System/Library/fonts/Avenir Next.ttc"
-#define UI_DEFAULT_SANS_IDX 2
+#define UI_DEFAULT_SANS_FILEPATH "/System/Library/fonts/HelveticaNeue.ttc"
+#define UI_DEFAULT_SANS_IDX 0
 #define UI_DEFAULT_SERIF_FILEPATH "/System/Library/fonts/supplemental/Times New Roman.ttf"
 // #define UI_DEFAULT_SERIF_FILEPATH "/System/Library/fonts/Hiragino Sans GB.ttc"
 // #define UI_DEFAULT_SERIF_FILEPATH "/System/Library/fonts/Apple Color Emoji.ttc"
 #define UI_DEFAULT_SERIF_IDX 0
+#define UI_DEFAULT_MONO_FILEPATH "/System/Library/fonts/Monaco.ttf"
+#define UI_DEFAULT_MONO_IDX 0
 #else
 #define UI_DEFAULT_SANS_FILEPATH "/usr/share/fonts/truetype/noto/NotoSansDisplay-Regular.ttf"
 #define UI_DEFAULT_SANS_IDX 0
@@ -22,7 +24,7 @@
 #define UI_DEFAULT_HOVER_BG_COLOR (UIColor){0.4, 0.4, 0.4, 1}
 #define UI_DEFAULT_CLICK_BG_COLOR (UIColor){1, 0.4, 0.4, 1}
 
-#define VERBOSE_IMAGE_OBJECTS
+// #define VERBOSE_IMAGE_OBJECTS
 
 class UIComponent;
 
@@ -75,6 +77,9 @@ typedef struct UICoord {
 		y = xy;
 	}
 
+	bool operator==(const UICoord& rhs) const {
+		return x == rhs.x && y == rhs.y;
+	}
 	UICoord& operator=(const UICoord& rhs) {
 		x = rhs.x;
 		y = rhs.y;
@@ -327,9 +332,10 @@ public:
 	static void setTexLoadFunc(tfType tf) {texLoadFunc = tf;}
 	static void setTexDestroyFunc(tdfType tdf) {texDestroyFunc = tdf;}
 
-private:
+protected:
 	UIImageInfo tex;
 
+private:
 	std::vector<UIComponent*> _getChildren() {return {};}
 
 	static std::map<VkImage, uint8_t> imgusers;

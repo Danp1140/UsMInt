@@ -217,10 +217,14 @@ UIImage::UIImage() : UIComponent() {
 UIImage::UIImage(const UIImage& rhs) :
 		tex(rhs.tex),
 		UIComponent(rhs) {
-	if (tex.image != VK_NULL_HANDLE) imgusers[tex.image]++;
+	if (tex.image != VK_NULL_HANDLE && tex.image != UIComponent::getNoTex().image) {
+		if (imgusers.contains(tex.image)) imgusers[tex.image]++;
+		else imgusers[tex.image] = 1;
+	}
 #ifdef VERBOSE_IMAGE_OBJECTS
 	std::cout << "UIImage(const UIImage&)\n";
-	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
+	if (tex.image == VK_NULL_HANDLE) std::cout << "null img" << std::endl;
+	else std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
 #endif
 }
 
@@ -229,7 +233,8 @@ UIImage::UIImage(UIImage&& rhs) noexcept :
 	UIComponent(rhs) {
 #ifdef VERBOSE_IMAGE_OBJECTS
 	std::cout << "UIImage(UIImage&&)\n";
-	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
+	if (tex.image == VK_NULL_HANDLE) std::cout << "null img" << std::endl;
+	else std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
 #endif
 }
 
@@ -242,14 +247,18 @@ UIImage::UIImage(UICoord p) : UIComponent(p, UICoord{0, 0}) {
 }
 
 UIImage::~UIImage() {
+	if (tex.image != VK_NULL_HANDLE && tex.image != UIComponent::getNoTex().image) {
+		if (imgusers[tex.image] == 1) {
+			texDestroyFunc(this);
+			imgusers.erase(tex.image);
+		}
+		else imgusers[tex.image]--;
+	}
 #ifdef VERBOSE_IMAGE_OBJECTS
 	std::cout << "~UIImage()\n";
-	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
+	if (tex.image == VK_NULL_HANDLE) std::cout << "null img" << std::endl;
+	else std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
 #endif
-	if (tex.image != VK_NULL_HANDLE) {
-		imgusers[tex.image]--;
-		if (imgusers[tex.image] == 0) texDestroyFunc(this);
-	}
 }
 
 void swap(UIImage& t1, UIImage& t2) {
@@ -261,16 +270,33 @@ UIImage& UIImage::operator=(UIImage rhs) {
 	swap(*this, rhs);
 #ifdef VERBOSE_IMAGE_OBJECTS
 	std::cout << "Image& = Image\n";
-	std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
+	if (tex.image == VK_NULL_HANDLE) std::cout << "null img" << std::endl;
+	else std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
 #endif
 	return *this;
 }
 
 void UIImage::setTex(const UIImageInfo& i) {
 	if (tex.image != i.image) {
-		if (tex.image != VK_NULL_HANDLE) imgusers[tex.image]--;
-		if (i.image != VK_NULL_HANDLE) imgusers[i.image]++;
+		if (tex.image != VK_NULL_HANDLE && tex.image != UIComponent::getNoTex().image) {
+			if (imgusers[tex.image] == 1) {
+				imgusers.erase(tex.image);
+				texDestroyFunc(this);
+			}
+			else imgusers[tex.image]--;
+		}
+		if (i.image != VK_NULL_HANDLE && i.image != UIComponent::getNoTex().image) {
+			if (imgusers.contains(i.image)) imgusers[i.image]++;
+			else imgusers[i.image] = 1;
+		}
 	}
+#ifdef VERBOSE_IMAGE_OBJECTS
+	std::cout << "setTex\n";
+	if (tex.image == VK_NULL_HANDLE) std::cout << "null img" << std::endl;
+	else std::cout << (int)imgusers[tex.image] << " users of " << tex.image << std::endl;
+	if (i.image == VK_NULL_HANDLE) std::cout << "null img" << std::endl;
+	else std::cout << (int)imgusers[i.image] << " users of " << i.image << std::endl;
+#endif
 	tex = i;
 }
 
@@ -294,20 +320,19 @@ UIText::UIText() : text(L""), UIImage() {
 	}
 	if (!typeface) {
 		// FT_New_Face(ft, UI_DEFAULT_SANS_FILEPATH, UI_DEFAULT_SANS_IDX, &typeface); 
-		FT_New_Face(ft, UI_DEFAULT_SERIF_FILEPATH, UI_DEFAULT_SERIF_IDX, &typeface); 
+		// FT_New_Face(ft, UI_DEFAULT_SERIF_FILEPATH, UI_DEFAULT_SERIF_IDX, &typeface); 
+		FT_New_Face(ft, UI_DEFAULT_MONO_FILEPATH, UI_DEFAULT_MONO_IDX, &typeface); 
 	}
 	pcdata.flags |= UI_PC_FLAG_BLEND;
 }
 
 UIText::UIText(std::wstring t) : UIText() {
-	text = t;
-	genTex();
+	setText(t);
 }
 
 UIText::UIText(std::wstring t, UICoord p) : UIText() {
 	setPos(p);
-	text = t;
-	genTex();
+	setText(t);
 }
 
 void swap(UIText& t1, UIText& t2) {
@@ -322,7 +347,8 @@ UIText& UIText::operator=(UIText rhs) {
 
 void UIText::setDS(VkDescriptorSet d) {
 	ds = d;
-	genTex();
+	// TODO: should we regen here???
+	// genTex();
 }
 
 void UIText::setText(std::wstring t) {
@@ -333,8 +359,8 @@ void UIText::setText(std::wstring t) {
 // -- Private --
 
 void UIText::genTex() {
-	const uint32_t fontsize = 18; // in pt
-	const uint32_t dpi = 512;
+	const uint32_t fontsize = 32; // in pt
+	const uint32_t dpi = 72;
 	FT_Size_RequestRec req {
 		FT_SIZE_REQUEST_TYPE_NOMINAL,
 		fontsize << 6, fontsize << 6,
@@ -361,12 +387,15 @@ void UIText::genTex() {
 	m.descender = truncate26_6(m.descender);
 	m.height = truncate26_6(m.height);
 	const uint32_t hres = maxlinelength, vres = numlines * m.height;
-	// TODO: switch all hres, vres to this extent
-	UIImageInfo temp = getTex();
-	temp.extent = {hres, vres};
-	setTex(temp);
+	if (hres == 0 || vres == 0) {
+		texLoadFunc(this, nullptr);
+		pcdata.extent = UICoord(0, 0);
+		return;
+	}
+	// TODO: switch all hres, vres to this extent (?)
+	tex.extent = {hres, vres};
 	unorm* texturedata = (unorm*)malloc(hres * vres * sizeof(unorm));
-	// TODO: at the very least use realloc
+	// TODO: any way to realloc???
 	memset(&texturedata[0], 0.0f, hres * vres * sizeof(unorm));
 	UICoord penposition(0, vres - m.ascender);
 
@@ -398,9 +427,12 @@ void UIText::genTex() {
 		}
 		penposition += UICoord(ha - hbx, -hby);
 	}
+	// TODO: make into function
 	pcdata.extent = UICoord(hres, vres) / (float)dpi * 72.f * 1.33333333333f;
 
 	// TODO: allow for regeneration of (static size) texture
+	// consider adding size param too, that would allow for some data handling nuance
+	// and for utilization of static-sized textures
 	texLoadFunc(this, texturedata);
 	free(texturedata);
 }
