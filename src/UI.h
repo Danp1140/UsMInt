@@ -8,8 +8,14 @@
 #include FT_FREETYPE_H
 
 #ifdef __APPLE__
-#define UI_DEFAULT_SANS_FILEPATH "/System/Library/fonts/Avenir Next.ttc"
-#define UI_DEFAULT_SANS_IDX 2
+#define UI_DEFAULT_SANS_FILEPATH "/System/Library/fonts/HelveticaNeue.ttc"
+#define UI_DEFAULT_SANS_IDX 0
+#define UI_DEFAULT_SERIF_FILEPATH "/System/Library/fonts/supplemental/Times New Roman.ttf"
+// #define UI_DEFAULT_SERIF_FILEPATH "/System/Library/fonts/Hiragino Sans GB.ttc"
+// #define UI_DEFAULT_SERIF_FILEPATH "/System/Library/fonts/Apple Color Emoji.ttc"
+#define UI_DEFAULT_SERIF_IDX 0
+#define UI_DEFAULT_MONO_FILEPATH "/System/Library/fonts/Monaco.ttf"
+#define UI_DEFAULT_MONO_IDX 0
 #else
 #define UI_DEFAULT_SANS_FILEPATH "/usr/share/fonts/truetype/noto/NotoSansDisplay-Regular.ttf"
 #define UI_DEFAULT_SANS_IDX 0
@@ -71,6 +77,9 @@ typedef struct UICoord {
 		y = xy;
 	}
 
+	bool operator==(const UICoord& rhs) const {
+		return x == rhs.x && y == rhs.y;
+	}
 	UICoord& operator=(const UICoord& rhs) {
 		x = rhs.x;
 		y = rhs.y;
@@ -91,6 +100,9 @@ typedef struct UICoord {
 		x -= rhs.x;
 		y -= rhs.y;
 		return *this;
+	}
+	UICoord operator*(float rhs) const {
+		return {x * rhs, y * rhs};
 	}
 	UICoord operator/(float rhs) const {
 		return {x / rhs, y / rhs};
@@ -123,10 +135,17 @@ typedef struct UIColor {
 	float r, g, b, a;
 } UIColor;
 
+typedef enum UIPushConstantFlagBits {
+	UI_PC_FLAG_NONE =  0x00,
+	UI_PC_FLAG_BLEND = 0x01,
+	UI_PC_FLAG_TEX =   0x02
+} UIPushConstantFlagBits;
+typedef uint32_t UIPushConstantFlags;
+
 typedef struct UIPushConstantData {
-	UIColor bgcolor = UIColor{0.3, 0.3, 0.3, 1};
+	UIColor bgcolor = UI_DEFAULT_BG_COLOR;
 	UICoord position = {0, 0}, extent = {0, 0};
-	bool blend = false;
+	UIPushConstantFlags flags = UI_PC_FLAG_NONE;
 } UIPushConstantData;
 
 typedef uint8_t UIEventFlags;
@@ -147,7 +166,7 @@ typedef enum UIDisplayFlagBits {
 class UIComponent {
 public:
 	UIComponent() : 
-		pcdata({UI_DEFAULT_BG_COLOR, {0, 0}, {0, 0}}),
+		pcdata({UI_DEFAULT_BG_COLOR, {0, 0}, {0, 0}, UI_PC_FLAG_NONE}),
 		graphicspipeline(defaultgraphicspipeline),
 		drawFunc(defaultDrawFunc), 
 		onHover(defaultOnHover),
@@ -160,7 +179,7 @@ public:
 		events(UI_EVENT_FLAG_NONE),
 		display(UI_DISPLAY_FLAG_SHOW) {}
 	UIComponent(UICoord p, UICoord e) : 
-		pcdata({UI_DEFAULT_BG_COLOR, p, e}), 
+		pcdata({UI_DEFAULT_BG_COLOR, p, e, UI_PC_FLAG_NONE}), 
 		graphicspipeline(defaultgraphicspipeline),
 		drawFunc(defaultDrawFunc), 
 		onHover(defaultOnHover),
@@ -188,11 +207,11 @@ public:
 	UIComponent(UIComponent&& rhs) noexcept;
 	virtual ~UIComponent() = default;
 
-	// this should probably be protected no?
 	friend void swap(UIComponent& c1, UIComponent& c2);
 
-	UIComponent& operator=(UIComponent rhs);
+	virtual UIComponent& operator=(UIComponent rhs);
 
+	// TODO: can we make UIComponent pure virtual???
 	virtual std::vector<const UIComponent*> getChildren() const {return {};}
 
 	// cb must have been started already
@@ -218,6 +237,7 @@ public:
 	UICoord getPos() const {return pcdata.position;}
 	void setExt(UICoord e) {pcdata.extent = e;}
 	UICoord getExt() const {return pcdata.extent;}
+	void setBGCol(UIColor c) {pcdata.bgcolor = c;}
 	// also sets childrens' graphics pipelines
 	void setGraphicsPipeline(const UIPipelineInfo& p);
 	const UIPipelineInfo& getGraphicsPipeline() const {return graphicspipeline;}
@@ -260,8 +280,11 @@ public:
 		UIComponent(rhs) {};
 	~UIContainer();
 
+	friend void swap(UIContainer& c1, UIContainer& c2);
+
+	UIContainer& operator=(UIContainer rhs);
+
 	std::vector<const UIComponent*> getChildren() const;
-	// void addChild(const UIComponent& c);
 	/*
 	 * This template function is a little hack to get the appropriate contructor called for classes like
 	 * UIText, which needs to monitor how many objects are using which texture. Implicitly, T should
@@ -269,12 +292,11 @@ public:
 	 *
 	 * It returns the heap-alloc'd pointer for further ops. Allows for a UIHandler to keep all these pointers straight itself if it needs to, without overhead in here.
 	 */
+	// TODO: option to use rvalue ref and move
 	template<class T>
 	T* addChild(const T& c) {
-		T* temp = new T;
-		*temp = c;
-		children.push_back(dynamic_cast<UIComponent*>(temp));
-		return temp;
+		children.push_back(dynamic_cast<UIComponent*>(new T(c)));
+		return dynamic_cast<T*>(children.back());
 	}
 
 private:
@@ -310,9 +332,10 @@ public:
 	static void setTexLoadFunc(tfType tf) {texLoadFunc = tf;}
 	static void setTexDestroyFunc(tdfType tdf) {texDestroyFunc = tdf;}
 
-private:
+protected:
 	UIImageInfo tex;
 
+private:
 	std::vector<UIComponent*> _getChildren() {return {};}
 
 	static std::map<VkImage, uint8_t> imgusers;
@@ -344,9 +367,14 @@ private:
 	std::wstring text;
 
 	void genTex();
+	
+	std::vector<UIComponent*> _getChildren() {return {};}
 
 	static FT_Library ft;
 	static FT_Face typeface;
+
+	static FT_Pos truncate26_6(FT_Pos x) {return x >> 6;}
+	static float floatFrom26_6(FT_Pos x) {return (float)x / (float)(1 << 6);}
 };
 
 class UIDropdown : public UIComponent {
