@@ -421,8 +421,8 @@ void UIText::genTex() {
 			for (uint32_t x = 0; x < typeface->glyph->bitmap.width; x++) {
 				pixscan.x = penposition.x + (float)x;
 				pixscan.y = penposition.y - (float)y;
-				texturedata[(size_t)floor(pixscan.y * (float)hres + pixscan.x)] = 
-					std::max(*bitmapbuffer++, texturedata[(size_t)floor(pixscan.y * (float)hres + pixscan.x)]);
+				texturedata[(size_t)floorf(pixscan.y * (float)hres + pixscan.x)] = 
+					std::max(*bitmapbuffer++, texturedata[(size_t)floorf(pixscan.y * (float)hres + pixscan.x)]);
 			}
 		}
 		penposition += UICoord(ha - hbx, -hby);
