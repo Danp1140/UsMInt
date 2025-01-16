@@ -3,6 +3,7 @@
 #include <map>
 #include <iostream>
 #include <functional>
+#include <ctgmath>
 #include <vulkan/vulkan.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -19,6 +20,8 @@
 #else
 #define UI_DEFAULT_SANS_FILEPATH "/usr/share/fonts/truetype/noto/NotoSansDisplay-Regular.ttf"
 #define UI_DEFAULT_SANS_IDX 0
+#define UI_DEFAULT_MONO_FILEPATH "/usr/share/fonts/truetype/ubuntu/UbuntuSansMono[wght].ttf"
+#define UI_DEFAULT_MONO_IDX 0
 #endif
 #define UI_DEFAULT_BG_COLOR (UIColor){0.3, 0.3, 0.3, 1}
 #define UI_DEFAULT_HOVER_BG_COLOR (UIColor){0.4, 0.4, 0.4, 1}
@@ -48,7 +51,7 @@ typedef struct UIPipelineInfo {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
 	};
 	VkPushConstantRange pushconstantrange = {};
-	VkSpecializationInfo specinfo = {};
+	VkSpecializationInfo* specinfo;
 } UIPipelineInfo;
 
 typedef struct UIImageInfo {
